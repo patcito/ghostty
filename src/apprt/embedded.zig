@@ -28,6 +28,11 @@ const log = std.log.scoped(.embedded_window);
 pub const resourcesDir = internal_os.resourcesDir;
 
 pub const App = struct {
+    /// On Linux the embedded apprt uses GtkGLArea for rendering. GTK does
+    /// not support threaded OpenGL so all drawing must happen on the main
+    /// application thread, the same way the GTK apprt works.
+    pub const must_draw_from_app_thread = builtin.target.os.tag == .linux;
+
     /// Because we only expect the embedding API to be used in embedded
     /// environments, the options are extern so that we can expose it
     /// directly to a C callconv and not pay for any translation costs.
@@ -1730,7 +1735,9 @@ pub const CAPI = struct {
     /// NOTE: Only call this for RE-realization (after displayUnrealized).
     /// For first-time initialization, use ghostty_surface_init_opengl instead.
     export fn ghostty_surface_display_realized(surface: *Surface) void {
-        surface.core_surface.renderer.displayRealized() catch {};
+        surface.core_surface.renderer.displayRealized() catch |err| {
+            log.warn("failed to reinitialize display err={}", .{err});
+        };
     }
 
     /// Initialize OpenGL function pointers for the surface.
