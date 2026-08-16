@@ -1,9 +1,6 @@
 //! Combines multiple static archives into a single fat archive.
-//! Uses libtool on Darwin and a cross-platform MRI-script build tool
-//! on all other platforms (including Windows).
+//! Uses a cross-platform MRI-script build tool on every platform.
 const std = @import("std");
-const builtin = @import("builtin");
-const LibtoolStep = @import("LibtoolStep.zig");
 
 /// Combine multiple static archives into a single fat archive.
 ///
@@ -16,20 +13,9 @@ pub fn create(
     name: []const u8,
     sources: []const std.Build.LazyPath,
 ) struct { step: *std.Build.Step, output: std.Build.LazyPath } {
-    if (target.result.os.tag.isDarwin() and
-        comptime builtin.os.tag.isDarwin())
-    {
-        const libtool = LibtoolStep.create(b, .{
-            .name = name,
-            .out_name = b.fmt("lib{s}-fat.a", .{name}),
-            .sources = @constCast(sources),
-        });
-        return .{ .step = libtool.step, .output = libtool.output };
-    }
-
-    // On non-Darwin, use a build tool that generates an MRI script and
-    // pipes it to `zig ar -M`. This works on all platforms including
-    // Windows (the previous /bin/sh approach did not).
+    // Generate an MRI script and pipe it to `zig ar -M`. This accepts
+    // duplicate archive-member basenames that Apple libtool rejects, and it
+    // works on every host platform without relying on /bin/sh.
     const tool = b.addExecutable(.{
         .name = "combine_archives",
         .root_module = b.createModule(.{
