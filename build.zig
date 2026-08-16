@@ -206,7 +206,22 @@ pub fn build(b: *std.Build) !void {
             } else {
                 lib_shared.install("ghostty-internal.so");
                 lib_static.install("ghostty-internal.a");
+
+                // Compatibility name for embedders. The shared library's
+                // SONAME is "libghostty.so", so that is the name the dynamic
+                // loader resolves at runtime -- installing only
+                // ghostty-internal.so leaves every embedder to create the
+                // alias by hand, and a stale libghostty.so left over from an
+                // older build silently satisfies both the link and the loader.
+                b.getInstallStep().dependOn(
+                    &b.addInstallLibFile(lib_shared.output, "libghostty.so").step,
+                );
             }
+
+            // Embedders need the runtime resources too: without these a
+            // libghostty-only build ships no themes, so `theme = <name>`
+            // resolves to nothing and terminal colors never change.
+            resources.install();
         }
     }
 
