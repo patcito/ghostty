@@ -1740,6 +1740,18 @@ pub const CAPI = struct {
         };
     }
 
+    /// Notify the surface that the display/GL context is going away.
+    /// On Linux, call this from the GtkGLArea "unrealize" callback while the
+    /// OLD context is still current: it tears down the context-local GPU
+    /// objects (swapchain, shaders, FBOs) and marks them defunct so a later
+    /// ghostty_surface_display_realized can rebuild them against the new
+    /// context. Without this, re-realization reuses objects belonging to a
+    /// destroyed context (blank terminal, GL errors, or a driver crash), and
+    /// ghostty_surface_display_realized will assert.
+    export fn ghostty_surface_display_unrealized(surface: *Surface) void {
+        surface.core_surface.renderer.displayUnrealized();
+    }
+
     /// Initialize OpenGL function pointers for the surface.
     /// Call this from a GtkGLArea "realize" callback when the GL context
     /// is current for the first time. This loads GLAD so the renderer

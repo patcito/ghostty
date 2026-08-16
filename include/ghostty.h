@@ -1144,6 +1144,7 @@ GHOSTTY_API bool ghostty_surface_process_exited(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_refresh(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_draw(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_display_realized(ghostty_surface_t);
+GHOSTTY_API void ghostty_surface_display_unrealized(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_init_opengl(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_draw_frame(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
