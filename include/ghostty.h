@@ -70,6 +70,7 @@ typedef enum {
   GHOSTTY_PLATFORM_INVALID,
   GHOSTTY_PLATFORM_MACOS,
   GHOSTTY_PLATFORM_IOS,
+  GHOSTTY_PLATFORM_GTK,
 } ghostty_platform_e;
 
 typedef enum {
@@ -494,9 +495,14 @@ typedef struct {
   void* uiview;
 } ghostty_platform_ios_s;
 
+typedef struct {
+  void* widget;
+} ghostty_platform_gtk_s;
+
 typedef union {
   ghostty_platform_macos_s macos;
   ghostty_platform_ios_s ios;
+  ghostty_platform_gtk_s gtk;
 } ghostty_platform_u;
 
 typedef enum {
@@ -528,6 +534,17 @@ typedef struct {
   uint32_t cell_width_px;
   uint32_t cell_height_px;
 } ghostty_surface_size_s;
+
+// A CPU-backed rendered frame. The data remains valid until `token` is
+// released with ghostty_surface_frame_free.
+typedef struct {
+  const uint8_t* data;
+  size_t len;
+  uint32_t width;
+  uint32_t height;
+  uint32_t stride;
+  void* token;
+} ghostty_surface_frame_s;
 
 // Config types
 
@@ -1186,6 +1203,9 @@ GHOSTTY_API bool ghostty_surface_needs_confirm_quit(ghostty_surface_t);
 GHOSTTY_API bool ghostty_surface_process_exited(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_refresh(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_draw(ghostty_surface_t);
+GHOSTTY_API bool ghostty_surface_take_frame(ghostty_surface_t,
+                                               ghostty_surface_frame_s*);
+GHOSTTY_API void ghostty_surface_frame_free(void*);
 GHOSTTY_API void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
 GHOSTTY_API void ghostty_surface_set_focus(ghostty_surface_t, bool);
 GHOSTTY_API void ghostty_surface_set_occlusion(ghostty_surface_t, bool);

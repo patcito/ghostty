@@ -382,6 +382,7 @@ pub const App = struct {
 pub const Platform = union(PlatformTag) {
     macos: MacOS,
     ios: IOS,
+    gtk: GTK,
 
     // If our build target for libghostty is not darwin then we do
     // not include macos support at all.
@@ -395,6 +396,12 @@ pub const Platform = union(PlatformTag) {
         uiview: objc.Object,
     } else void;
 
+    /// GTK owns presentation. Ghostty renders offscreen and the embedder
+    /// consumes CPU-backed frames through the C API.
+    pub const GTK = if (!builtin.target.os.tag.isDarwin()) struct {
+        widget: *anyopaque,
+    } else void;
+
     // The C ABI compatible version of this union. The tag is expected
     // to be stored elsewhere.
     pub const C = extern union {
@@ -404,6 +411,10 @@ pub const Platform = union(PlatformTag) {
 
         ios: extern struct {
             uiview: ?*anyopaque,
+        },
+
+        gtk: extern struct {
+            widget: ?*anyopaque,
         },
     };
 
@@ -424,6 +435,13 @@ pub const Platform = union(PlatformTag) {
                     break :ios error.UIViewMustBeSet);
                 break :ios .{ .ios = .{ .uiview = uiview } };
             } else error.UnsupportedPlatform,
+
+            .gtk => if (GTK != void) gtk: {
+                const config = c_platform.gtk;
+                const widget = config.widget orelse
+                    break :gtk error.GtkWidgetMustBeSet;
+                break :gtk .{ .gtk = .{ .widget = widget } };
+            } else error.UnsupportedPlatform,
         };
     }
 };
@@ -434,6 +452,7 @@ pub const PlatformTag = enum(c_int) {
 
     macos = 1,
     ios = 2,
+    gtk = 3,
 };
 
 pub const EnvVar = extern struct {
@@ -622,6 +641,12 @@ pub const Surface = struct {
             self,
         );
         errdefer self.core_surface.deinit();
+
+        // Generic GTK embedders consume CPU-backed frames. Disabling DMA-BUF
+        // presentation here makes the renderer use its portable readback path.
+        if (comptime !builtin.target.os.tag.isDarwin()) {
+            self.core_surface.reportPresentationHealth(.unhealthy);
+        }
 
         // If our options requested a specific font-size, set that.
         if (opts.font_size != 0) {
@@ -1989,6 +2014,67 @@ pub const CAPI = struct {
     /// call as soon as possible (NOW if possible).
     export fn ghostty_surface_draw(surface: *Surface) void {
         surface.draw();
+    }
+
+    const SurfaceFrame = extern struct {
+        data: ?[*]const u8 = null,
+        len: usize = 0,
+        width: u32 = 0,
+        height: u32 = 0,
+        stride: u32 = 0,
+        token: ?*anyopaque = null,
+    };
+
+    const FrameHolder = if (renderer.Renderer.ExportedFrame != void) struct {
+        alloc: Allocator,
+        frame: renderer.Renderer.ExportedFrame,
+    } else void;
+
+    /// Take ownership of the newest rendered CPU frame, if one is ready.
+    /// The caller must release `token` with ghostty_surface_frame_free.
+    export fn ghostty_surface_take_frame(
+        surface: *Surface,
+        result: *SurfaceFrame,
+    ) bool {
+        result.* = .{};
+        if (comptime renderer.Renderer.ExportedFrame != void) {
+            const frame = surface.core_surface.renderer.takeFrame() orelse return false;
+            switch (frame) {
+                .memory => |memory| {
+                    const alloc = surface.app.core_app.alloc;
+                    const holder = alloc.create(FrameHolder) catch {
+                        frame.deinit();
+                        return false;
+                    };
+                    holder.* = .{ .alloc = alloc, .frame = frame };
+                    result.* = .{
+                        .data = memory.pixels.ptr,
+                        .len = memory.pixels.len,
+                        .width = memory.width,
+                        .height = memory.height,
+                        .stride = memory.width * 4,
+                        .token = holder,
+                    };
+                    return true;
+                },
+                .dmabuf => {
+                    // Presentation health is forced unhealthy for GTK embedders,
+                    // so this is only possible during the initial transition.
+                    frame.deinit();
+                    return false;
+                },
+            }
+        } else return false;
+    }
+
+    export fn ghostty_surface_frame_free(token: ?*anyopaque) void {
+        if (comptime renderer.Renderer.ExportedFrame != void) {
+            const raw = token orelse return;
+            const holder: *FrameHolder = @ptrCast(@alignCast(raw));
+            const alloc = holder.alloc;
+            holder.frame.deinit();
+            alloc.destroy(holder);
+        }
     }
 
     /// Update the size of a surface. This will trigger resize notifications
