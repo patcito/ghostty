@@ -216,14 +216,21 @@ pub fn add(
     // POSIX C imports that are used throughout Ghostty on a general basis.
     // (note: errno is C stdlib but we just include it here because that's
     // where it's generally included otherwise)
-    try translate_c.addImportToModule(b, "posix_c", step.root_module, .{
-        .source = .{ .includes = .{ .files = &.{
+    const posix_headers: []const translate_c.Options.IncludeFile = if (target.result.os.tag == .windows)
+        &.{
+            .{ .path = "errno.h" },
+            .{ .path = "signal.h" },
+        }
+    else
+        &.{
             .{ .path = "errno.h" },
             .{ .path = "pwd.h" },
             .{ .path = "signal.h" },
             .{ .path = "sys/types.h" },
             .{ .path = "unistd.h" },
-        } } },
+        };
+    try translate_c.addImportToModule(b, "posix_c", step.root_module, .{
+        .source = .{ .includes = .{ .files = posix_headers } },
         .target = target,
         .optimize = optimize,
     });
