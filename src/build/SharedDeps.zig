@@ -653,23 +653,27 @@ pub fn add(
         }
     }
 
-    // If we're building an exe then we have additional dependencies.
-    if (step.kind != .lib) {
-        // We always statically compile glad
-        step.root_module.addIncludePath(b.path("vendor/glad/include/"));
+    // The OpenGL renderer is part of both the executable and the internal
+    // embedding library, so both artifacts must carry GLAD themselves.
+    step.root_module.addIncludePath(b.path("vendor/glad/include/"));
+    step.root_module.addCSourceFile(.{
+        .file = b.path("vendor/glad/src/gl.c"),
+        .flags = &.{},
+    });
+
+    // GTK and non-Darwin embedders use the EGL-backed offscreen renderer.
+    if (self.config.app_runtime == .gtk or
+        (self.config.app_runtime == .none and !target.result.os.tag.isDarwin()))
+    {
         step.root_module.addCSourceFile(.{
-            .file = b.path("vendor/glad/src/gl.c"),
+            .file = b.path("vendor/glad/src/glad_egl.c"),
             .flags = &.{},
         });
+        step.root_module.linkSystemLibrary("egl", dynamic_link_opts);
+    }
 
-        // Link EGL for GTK.
-        if (self.config.app_runtime == .gtk) {
-            step.root_module.addCSourceFile(.{
-                .file = b.path("vendor/glad/src/glad_egl.c"),
-                .flags = &.{},
-            });
-            step.root_module.linkSystemLibrary("egl", dynamic_link_opts);
-        }
+    // If we're building an exe then we have additional dependencies.
+    if (step.kind != .lib) {
 
         // When we're targeting flatpak we ALWAYS link GTK so we
         // get access to glib for dbus.
